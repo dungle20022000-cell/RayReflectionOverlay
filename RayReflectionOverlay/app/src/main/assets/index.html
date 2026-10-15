@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#00000000">
+<title>Tia Phản Xạ</title>
+<style>
+  * {
+    margin: 0; padding: 0; box-sizing: border-box;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: none; user-select: none;
+  }
+  html, body {
+    width: 100%; height: 100%; overflow: hidden;
+    background: transparent !important;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  #canvas {
+    display: block; width: 100%; height: 100%;
+    background: transparent !important;
+  }
+  #ui {
+    position: fixed; top: 0; left: 0; right: 0;
+    pointer-events: none; z-index: 10;
+    padding: env(safe-area-inset-top) 10px 0 10px;
+  }
+  .help {
+    background: rgba(20, 20, 35, 0.82);
+    backdrop-filter: blur(8px);
+    border-radius: 12px;
+    padding: 10px 12px;
+    color: #c8c8d8;
+    font-size: 12.5px;
+    line-height: 1.45;
+    max-width: 360px;
+    margin-top: 6px;
+  }
+  .help h3 { color: #fff; font-size: 14px; margin-bottom: 4px; }
+  .help b { color: #7ec8ff; }
+  #toolbar {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    display: flex; flex-wrap: wrap; gap: 6px;
+    padding: 8px 10px calc(8px + env(safe-area-inset-bottom));
+    background: rgba(10,10,20,0.75);
+    pointer-events: auto; z-index: 20;
+  }
+  button {
+    flex: 1 1 22%;
+    min-width: 68px;
+    padding: 10px 6px;
+    border: none; border-radius: 9px;
+    font-size: 13px; font-weight: 600;
+    color: #fff; background: #2a3a5a;
+  }
+  button:active { transform: scale(0.96); opacity: 0.85; }
+  button.danger { background: #6b2a2a; }
+  button.bounce {
+    flex: 0 0 auto;
+    background: #3a2a5a;
+    min-width: 42px;
+    font-size: 16px;
+  }
+  #bounceLabel {
+    flex: 0 0 auto;
+    color: #ccc;
+    font-size: 12px;
+    align-self: center;
+    padding: 0 3px;
+    min-width: 68px;
+    text-align: center;
+  }
+  #info {
+    position: fixed; top: 6px; right: 10px;
+    color: #aaa; font-size: 11px;
+    pointer-events: none; z-index: 15;
+    text-shadow: 0 1px 3px #000;
+  }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+
+<div id="ui">
+  <div class="help" id="helpBox">
+    <h3>Tia Phản Xạ</h3>
+    • <b>Kéo 8 điểm vàng</b> = chỉnh khung ngoài<br>
+    • <b>Kéo 2 điểm cam A / B</b> = di chuyển tia realtime<br>
+    • Nút <b>− / +</b> chỉnh số lần phản xạ (mặc định 6)
+  </div>
+</div>
+
+<div id="info">Phản xạ: 6</div>
+
+<div id="toolbar">
+  <button class="danger" id="btnClear">Ẩn tia</button>
+  <button id="btnReset">Reset</button>
+  <button id="btnHelp">Ẩn HD</button>
+  <button class="bounce" id="btnMinus">−</button>
+  <span id="bounceLabel">Phản xạ: 6</span>
+  <button class="bounce" id="btnPlus">+</button>
+</div>
+
+<script>
+(function () {
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d', { alpha: true }); // quan trọng: hỗ trợ trong suốt
+  const helpBox = document.getElementById('helpBox');
+  const infoEl = document.getElementById('info');
+  const bounceLabel = document.getElementById('bounceLabel');
+
+  let W, H, dpr;
+  let framePoints = [];
+  let rayPoints = [];
+  let dragging = null;
+  let rayPath = null;
+  let maxBounces = 6;
+  let showHelp = true;
+  let showRay = true;
+
+  const FRAME_R = 13;
+  const RAY_R = 12;
+  const HIT_R = 26;
+
+  const COLORS = {
+    edge: '#50b4ff',
+    frame: '#ffdc32',
+    rayPt: '#ff7040',
+    rayPtSelected: '#ff4020',
+    ray: '#64ff96',
+    rayGlow: 'rgba(50,200,100,0.45)',
+    dirLine: 'rgba(255,140,80,0.55)'
+  };
+
+  function resize() {
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    W = window.innerWidth;
+    H = window.innerHeight;
+    canvas.width = W * dpr;
+    canvas.height = H * dpr;
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    if (framePoints.length === 0) resetAll();
+  }
+
+  function resetAll() {
+    const cx = W / 2, cy = H / 2;
+    const r = Math.min(W, H) * 0.30;
+    framePoints = [];
+    for (let i = 0; i < 8; i++) {
+      const angle = Math.PI / 8 + i * Math.PI / 4;
+      const rr = r * (0.88 + 0.12 * Math.sin(i * 1.5));
+      framePoints.push({ x: cx + rr * Math.cos(angle), y: cy + rr * Math.sin(angle) });
+    }
+    rayPoints = [
+      { x: cx - r * 0.25, y: cy },
+      { x: cx + r * 0.25, y: cy - r * 0.1 }
+    ];
+    showRay = true;
+    updateRay();
+  }
+
+  function norm(v) {
+    const n = Math.hypot(v.x, v.y);
+    return n < 1e-12 ? { x: 0, y: 0 } : { x: v.x / n, y: v.y / n };
+  }
+  function sub(a, b) { return { x: a.x - b.x, y: a.y - b.y }; }
+  function add(a, b) { return { x: a.x + b.x, y: a.y + b.y }; }
+  function mul(v, s) { return { x: v.x * s, y: v.y * s }; }
+  function dot(a, b) { return a.x * b.x + a.y * b.y; }
+
+  function reflect(I, N) {
+    const d = 2 * dot(I, N);
+    return { x: I.x - d * N.x, y: I.y - d * N.y };
+  }
+
+  function segmentIntersect(o, d, a, b) {
+    const v = sub(b, a);
+    const det = d.x * (-v.y) - d.y * (-v.x);
+    if (Math.abs(det) < 1e-12) return null;
+    const dx = a.x - o.x, dy = a.y - o.y;
+    const t = (dx * (-v.y) - dy * (-v.x)) / det;
+    const s = (d.x * dy - d.y * dx) / det;
+    if (t > 1e-5 && s >= 0 && s <= 1) {
+      return { t, pt: add(o, mul(d, t)) };
+    }
+    return null;
+  }
+
+  function closestHit(origin, dir, edges, skip) {
+    let best = null;
+    for (let i = 0; i < edges.length; i++) {
+      if (i === skip) continue;
+      const res = segmentIntersect(origin, dir, edges[i][0], edges[i][1]);
+      if (res && (!best || res.t < best.t)) {
+        best = { ...res, idx: i };
+      }
+    }
+    return best;
+  }
+
+  function edgeNormal(a, b, inside) {
+    const edge = sub(b, a);
+    let n = { x: -edge.y, y: edge.x };
+    n = norm(n);
+    const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    if (dot(n, sub(inside, mid)) < 0) n = { x: -n.x, y: -n.y };
+    return n;
+  }
+
+  function getEdges() {
+    const e = [];
+    for (let i = 0; i < 8; i++) e.push([framePoints[i], framePoints[(i + 1) % 8]]);
+    return e;
+  }
+
+  function centroid() {
+    let x = 0, y = 0;
+    for (const p of framePoints) { x += p.x; y += p.y; }
+    return { x: x / 8, y: y / 8 };
+  }
+
+  function updateRay() {
+    if (!showRay || rayPoints.length < 2) {
+      rayPath = null;
+      return;
+    }
+    let origin = { ...rayPoints[0] };
+    let dir = norm(sub(rayPoints[1], rayPoints[0]));
+    if (Math.hypot(dir.x, dir.y) < 1e-8) {
+      rayPath = null;
+      return;
+    }
+
+    const path = [{ ...origin }];
+    const edges = getEdges();
+    const cen = centroid();
+    let currentEdge = -1;
+    let total = 0;
+
+    for (let b = 0; b < maxBounces; b++) {
+      const hit = closestHit(origin, dir, edges, currentEdge);
+      if (!hit) {
+        path.push(add(origin, mul(dir, 2500)));
+        break;
+      }
+      path.push({ ...hit.pt });
+      total += hit.t;
+      if (total > 50000) break;
+
+      const [a, be] = edges[hit.idx];
+      const N = edgeNormal(a, be, cen);
+      dir = norm(reflect(dir, N));
+      origin = add(hit.pt, mul(dir, 0.0001));
+      currentEdge = hit.idx;
+    }
+    rayPath = path;
+    updateInfo();
+  }
+
+  function updateInfo() {
+    infoEl.textContent = 'Phản xạ: ' + maxBounces;
+    bounceLabel.textContent = 'Phản xạ: ' + maxBounces;
+  }
+
+  function getPos(e) {
+    if (e.touches && e.touches.length)
+      return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    return { x: e.clientX, y: e.clientY };
+  }
+
+  function findNearest(pos) {
+    for (let i = 0; i < rayPoints.length; i++) {
+      const d = Math.hypot(rayPoints[i].x - pos.x, rayPoints[i].y - pos.y);
+      if (d < HIT_R) return { type: 'ray', index: i };
+    }
+    for (let i = 0; i < framePoints.length; i++) {
+      const d = Math.hypot(framePoints[i].x - pos.x, framePoints[i].y - pos.y);
+      if (d < HIT_R) return { type: 'frame', index: i };
+    }
+    return null;
+  }
+
+  function onStart(e) {
+    e.preventDefault();
+    const pos = getPos(e);
+    const nearest = findNearest(pos);
+    if (nearest) dragging = nearest;
+  }
+
+  function onMove(e) {
+    e.preventDefault();
+    if (!dragging) return;
+    const pos = getPos(e);
+    if (dragging.type === 'frame') {
+      framePoints[dragging.index].x = pos.x;
+      framePoints[dragging.index].y = pos.y;
+      updateRay();
+    } else if (dragging.type === 'ray') {
+      rayPoints[dragging.index].x = pos.x;
+      rayPoints[dragging.index].y = pos.y;
+      updateRay();
+    }
+  }
+
+  function onEnd(e) {
+    e.preventDefault();
+    dragging = null;
+  }
+
+  canvas.addEventListener('touchstart', onStart, { passive: false });
+  canvas.addEventListener('touchmove', onMove, { passive: false });
+  canvas.addEventListener('touchend', onEnd, { passive: false });
+  canvas.addEventListener('mousedown', onStart);
+  window.addEventListener('mousemove', onMove);
+  window.addEventListener('mouseup', onEnd);
+
+  document.getElementById('btnClear').onclick = function () {
+    showRay = !showRay;
+    if (showRay) updateRay();
+    else rayPath = null;
+    document.getElementById('btnClear').textContent = showRay ? 'Ẩn tia' : 'Hiện tia';
+  };
+  document.getElementById('btnReset').onclick = function () {
+    showRay = true;
+    document.getElementById('btnClear').textContent = 'Ẩn tia';
+    resetAll();
+  };
+  document.getElementById('btnHelp').onclick = function () {
+    showHelp = !showHelp;
+    helpBox.classList.toggle('hidden', !showHelp);
+    document.getElementById('btnHelp').textContent = showHelp ? 'Ẩn HD' : 'Hiện HD';
+  };
+  document.getElementById('btnMinus').onclick = function () {
+    if (maxBounces > 1) { maxBounces--; updateRay(); }
+  };
+  document.getElementById('btnPlus').onclick = function () {
+    if (maxBounces < 50) { maxBounces++; updateRay(); }
+  };
+
+  function draw() {
+    // Xóa trong suốt hoàn toàn (không vẽ nền đen)
+    ctx.clearRect(0, 0, W, H);
+
+    // Khung ngoài
+    ctx.strokeStyle = COLORS.edge;
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(framePoints[0].x, framePoints[0].y);
+    for (let i = 1; i < 8; i++) ctx.lineTo(framePoints[i].x, framePoints[i].y);
+    ctx.closePath();
+    ctx.stroke();
+
+    // Tia realtime
+    if (rayPath && rayPath.length >= 2) {
+      ctx.strokeStyle = COLORS.rayGlow;
+      ctx.lineWidth = 6;
+      ctx.beginPath();
+      ctx.moveTo(rayPath[0].x, rayPath[0].y);
+      for (let i = 1; i < rayPath.length; i++) ctx.lineTo(rayPath[i].x, rayPath[i].y);
+      ctx.stroke();
+
+      ctx.strokeStyle = COLORS.ray;
+      ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      ctx.moveTo(rayPath[0].x, rayPath[0].y);
+      for (let i = 1; i < rayPath.length; i++) ctx.lineTo(rayPath[i].x, rayPath[i].y);
+      ctx.stroke();
+    }
+
+    // Đường A → B nét đứt
+    if (rayPoints.length === 2) {
+      ctx.strokeStyle = COLORS.dirLine;
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([6, 4]);
+      ctx.beginPath();
+      ctx.moveTo(rayPoints[0].x, rayPoints[0].y);
+      ctx.lineTo(rayPoints[1].x, rayPoints[1].y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // 8 điểm khung vàng
+    for (let i = 0; i < 8; i++) {
+      const p = framePoints[i];
+      const isDrag = dragging && dragging.type === 'frame' && dragging.index === i;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, FRAME_R, 0, Math.PI * 2);
+      ctx.fillStyle = COLORS.frame;
+      ctx.fill();
+      ctx.strokeStyle = isDrag ? '#fff' : '#1a1a28';
+      ctx.lineWidth = isDrag ? 2.5 : 2;
+      ctx.stroke();
+      ctx.fillStyle = '#1a1a28';
+      ctx.font = 'bold 12px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(String(i + 1), p.x, p.y);
+    }
+
+    // 2 điểm tia cam A B
+    const labels = ['A', 'B'];
+    for (let i = 0; i < rayPoints.length; i++) {
+      const p = rayPoints[i];
+      const isDrag = dragging && dragging.type === 'ray' && dragging.index === i;
+
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, RAY_R + 3, 0, Math.PI * 2);
+      ctx.strokeStyle = isDrag ? '#fff' : 'rgba(255,120,60,0.45)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, RAY_R, 0, Math.PI * 2);
+      ctx.fillStyle = isDrag ? COLORS.rayPtSelected : COLORS.rayPt;
+      ctx.fill();
+      ctx.strokeStyle = '#1a1a28';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 12px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(labels[i], p.x, p.y);
+    }
+
+    requestAnimationFrame(draw);
+  }
+
+  window.addEventListener('resize', resize);
+  window.addEventListener('orientationchange', function () { setTimeout(resize, 150); });
+  resize();
+  updateInfo();
+  draw();
+
+  document.addEventListener('gesturestart', function (e) { e.preventDefault(); });
+  document.addEventListener('gesturechange', function (e) { e.preventDefault(); });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="24dp"
+    android:gravity="center_horizontal"
+    android:background="#0F0F19">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Tia Phản Xạ"
+        android:textSize="28sp"
+        android:textStyle="bold"
+        android:textColor="#FFFFFF"
+        android:layout_marginTop="40dp"
+        android:layout_marginBottom="8dp" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Công cụ nghiên cứu góc phản xạ\nOverlay đè lên màn hình"
+        android:textSize="14sp"
+        android:textColor="#AAAAAA"
+        android:gravity="center"
+        android:layout_marginBottom="32dp" />
+
+    <TextView
+        android:id="@+id/tvStatus"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Đang kiểm tra quyền..."
+        android:textSize="15sp"
+        android:textColor="#CCCCCC"
+        android:gravity="center"
+        android:padding="16dp"
+        android:background="#1A1A2E"
+        android:layout_marginBottom="24dp" />
+
+    <Button
+        android:id="@+id/btnPermission"
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:text="1. Cấp quyền Overlay"
+        android:textSize="16sp"
+        android:layout_marginBottom="12dp"
+        android:backgroundTint="#2A4A7A" />
+
+    <Button
+        android:id="@+id/btnStart"
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:text="2. Bật Overlay"
+        android:textSize="16sp"
+        android:layout_marginBottom="12dp"
+        android:backgroundTint="#1A6B4A" />
+
+    <Button
+        android:id="@+id/btnStop"
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:text="Tắt Overlay"
+        android:textSize="16sp"
+        android:backgroundTint="#6B2A2A" />
+
+</LinearLayout>
